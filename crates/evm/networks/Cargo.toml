@@ -37,5 +37,7 @@ revm = { workspace = true, features = [
     "blst",
 ] }
 
+base-common-precompiles = { path = "vendor/base-common-precompiles" }
+
 clap = { version = "4", features = ["derive", "env", "unicode", "wrap_help"] }
 serde.workspace = true

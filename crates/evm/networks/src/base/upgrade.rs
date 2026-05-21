@@ -51,7 +51,7 @@ pub enum BaseUpgrade {
 
 impl BaseUpgrade {
     /// Latest Base upgrade. Used when no explicit hardfork is requested.
-    pub const LATEST: Self = Self::Azul;
+    pub const LATEST: Self = Self::Beryl;
 
     /// Returns `true` if the upgrade `self` is active when the currently
     /// selected hardfork is `current`.
@@ -60,6 +60,11 @@ impl BaseUpgrade {
     /// whenever a later variant is selected.
     pub const fn is_enabled_in(self, current: Self) -> bool {
         (self as u8) <= (current as u8)
+    }
+
+    /// Returns `true` if Beryl (app-layer precompiles) is active for this hardfork.
+    pub const fn is_at_least_beryl(self) -> bool {
+        Self::Beryl.is_enabled_in(self)
     }
 }
 

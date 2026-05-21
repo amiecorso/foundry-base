@@ -128,10 +128,11 @@ impl NetworkConfigs {
             });
         }
         if self.base {
-            base::precompiles::register_for_hardfork(
-                precompiles,
-                self.base_hardfork.unwrap_or_default(),
-            );
+            let hardfork = self.base_hardfork.unwrap_or_default();
+            base::precompiles::register_for_hardfork(precompiles, hardfork);
+            if hardfork.is_at_least_beryl() {
+                base::app_precompiles::install_all(precompiles);
+            }
         }
     }
 
