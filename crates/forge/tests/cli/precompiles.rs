@@ -321,3 +321,163 @@ Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
 
 "#]]);
 });
+
+// End-to-end integration test for the Base app-layer TokenFactory precompile
+// against a live vibenet fork (chain id 84_538_453 / 0x509f455).
+//
+// Vibenet currently has none of the app-layer features (TokenFactory,
+// PolicyRegistry, ActivationRegistry features) flipped on, so the test
+// activates `TOKEN_FACTORY` locally on the fork via vm.prank(ACTIVATION_ADMIN)
+// before calling createToken. The end-state assertion is the deterministic
+// address derivation defined in the Rust precompile
+// (factory/variant.rs::TokenVariant::compute_address): the returned token
+// address must equal `0xb2 || 9*0x00 || variant || decimals ||
+// lower8(keccak256(abi.encode(caller, salt)))`.
+//
+// This test exercises the full vendored stack end-to-end:
+//   - ActivationRegistry sstore (admin gate, set_activated path)
+//   - TokenFactory dispatch (ABI decode, ensure_activated, decode_create_params)
+//   - TokenVariant::compute_address (address derivation)
+//   - EvmPrecompileStorageProvider::set_code (bytecode install)
+//   - B20Token initialize (capability and supply-cap setup) and emit_event
+//     for TokenCreated
+//
+// Requires network access to https://rpc.vibes.base.org/; skip in CI without
+// outbound access. The cargo test name includes `integration` so it can be
+// filtered.
+forgetest_init!(base_token_factory_integration, |prj, cmd| {
+    prj.update_config(|config| {
+        config.networks = NetworkConfigs::with_base().with_base_hardfork(BaseUpgrade::Beryl);
+    });
+
+    prj.add_test(
+        "BaseTokenFactoryIntegration.t.sol",
+        r#"
+import "forge-std/Test.sol";
+
+interface IActivationRegistry {
+    function isActivated(bytes32 feature) external view returns (bool);
+    function admin() external view returns (address);
+    function activate(bytes32 feature) external;
+}
+
+interface ITokenFactory {
+    enum TokenVariant { NONE, DEFAULT, STABLECOIN, SECURITY }
+
+    struct B20CreateParams {
+        uint8 version;
+        string name;
+        string symbol;
+        address initialAdmin;
+        uint8 decimals;
+    }
+
+    function createToken(
+        TokenVariant variant,
+        bytes32 salt,
+        bytes calldata params,
+        bytes[] calldata initCalls
+    ) external returns (address token);
+
+    function isB20(address token) external view returns (bool);
+    function getTokenVariant(address token) external view returns (TokenVariant);
+}
+
+contract BaseTokenFactoryIntegrationTest is Test {
+    address constant TOKEN_FACTORY_ADDR = 0xb20F00000000000000000000000000000000000f;
+    address constant ACTIVATION_REGISTRY_ADDR = 0x84530000000000000000000000000000000000ff;
+    address constant ACTIVATION_ADMIN = 0xCB00000000000000000000000000000000000000;
+
+    bytes32 constant FEATURE_TOKEN_FACTORY =
+        0xceff857b4173841a3aef07ca52b183282fe74fe117e8f9dda0dcb3ddafd18a5b;
+
+    IActivationRegistry constant ACTIVATION_REGISTRY = IActivationRegistry(ACTIVATION_REGISTRY_ADDR);
+    ITokenFactory constant TOKEN_FACTORY = ITokenFactory(TOKEN_FACTORY_ADDR);
+
+    function setUp() public {
+        vm.createSelectFork("https://rpc.vibes.base.org/");
+    }
+
+    function _expectedTokenAddress(address creator, uint8 variant, uint8 decimals, bytes32 salt)
+        internal
+        pure
+        returns (address)
+    {
+        bytes32 hash = keccak256(abi.encode(creator, salt));
+        bytes memory addrBytes = new bytes(20);
+        addrBytes[0] = 0xb2;
+        addrBytes[10] = bytes1(variant);
+        addrBytes[11] = bytes1(decimals);
+        for (uint256 i = 0; i < 8; i++) {
+            addrBytes[12 + i] = hash[i];
+        }
+        return address(bytes20(_bytesToBytes20(addrBytes)));
+    }
+
+    function _bytesToBytes20(bytes memory b) internal pure returns (bytes20 out) {
+        require(b.length == 20, "len");
+        assembly { out := mload(add(b, 32)) }
+    }
+
+    function test_TokenFactory_createToken_returnsExpectedAddress() public {
+        assertEq(block.chainid, 84_538_453, "expected vibenet fork");
+        assertEq(ACTIVATION_REGISTRY.admin(), ACTIVATION_ADMIN, "activation admin mismatch");
+
+        if (!ACTIVATION_REGISTRY.isActivated(FEATURE_TOKEN_FACTORY)) {
+            bytes memory activateData =
+                abi.encodeCall(IActivationRegistry.activate, (FEATURE_TOKEN_FACTORY));
+            vm.prank(ACTIVATION_ADMIN);
+            (bool ok, bytes memory ret) = ACTIVATION_REGISTRY_ADDR.call(activateData);
+            if (!ok) {
+                console2.logBytes(ret);
+                revert("activate reverted; see revert bytes above");
+            }
+        }
+        assertTrue(
+            ACTIVATION_REGISTRY.isActivated(FEATURE_TOKEN_FACTORY),
+            "TokenFactory must be activated"
+        );
+
+        uint8 decimals = 18;
+        bytes32 salt = keccak256("foundry-base.base_token_factory_integration");
+
+        ITokenFactory.B20CreateParams memory params = ITokenFactory.B20CreateParams({
+            version: 1,
+            name: "Foundry-Base Test Token",
+            symbol: "FBT",
+            initialAdmin: address(this),
+            decimals: decimals
+        });
+
+        bytes[] memory initCalls = new bytes[](0);
+
+        address expected = _expectedTokenAddress(
+            address(this),
+            uint8(ITokenFactory.TokenVariant.DEFAULT),
+            decimals,
+            salt
+        );
+
+        address token = TOKEN_FACTORY.createToken(
+            ITokenFactory.TokenVariant.DEFAULT,
+            salt,
+            abi.encode(params),
+            initCalls
+        );
+
+        assertEq(token, expected, "deterministic address mismatch");
+        assertTrue(TOKEN_FACTORY.isB20(token), "factory must recognize token");
+        assertEq(
+            uint256(TOKEN_FACTORY.getTokenVariant(token)),
+            uint256(ITokenFactory.TokenVariant.DEFAULT),
+            "variant mismatch"
+        );
+        assertGt(token.code.length, 0, "expected bytecode installed at token address");
+    }
+}
+   "#,
+    );
+
+    cmd.args(["test", "--mt", "test_TokenFactory_createToken_returnsExpectedAddress", "-vvv"])
+        .assert_success();
+});
