@@ -1,0 +1,17 @@
+[package]
+name = "base-precompile-macros"
+description = "Procedural macros for type-safe EVM storage abstractions for Base native precompiles (vendored from base/base feat/b20stablecoin)"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+
+[dependencies]
+alloy-primitives.workspace = true
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

@@ -1,0 +1,38 @@
+[package]
+name = "base-precompile-storage"
+description = "EVM storage abstractions and runtime traits for Base native precompiles (vendored from base/base feat/b20stablecoin)"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# alloy
+alloy-evm.workspace = true
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
+
+# revm
+revm = { workspace = true, default-features = false, features = ["std"] }
+
+# base (vendored)
+base-precompile-macros = { path = "../precompile-macros" }
+
+# misc
+thiserror = "2"
+derive_more = { version = "2", default-features = false, features = ["from", "try_into"] }
+
+[features]
+default = ["std"]
+std = [
+    "alloy-evm/std",
+    "alloy-primitives/std",
+    "alloy-sol-types/std",
+    "derive_more/std",
+    "revm/std",
+    "thiserror/std",
+]
+test-utils = ["std"]

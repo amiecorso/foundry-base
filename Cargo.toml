@@ -26,6 +26,9 @@ members = [
     "crates/primitives/",
     "crates/script-sequence/",
     "crates/test-utils/",
+    "crates/evm/networks/vendor/precompile-macros/",
+    "crates/evm/networks/vendor/precompile-storage/",
+    "crates/evm/networks/vendor/base-common-precompiles/",
 ]
 resolver = "2"
 

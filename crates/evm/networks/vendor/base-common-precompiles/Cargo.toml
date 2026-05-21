@@ -1,0 +1,33 @@
+[package]
+name = "base-common-precompiles"
+description = "Base precompile definitions for app-layer features (TokenFactory, PolicyRegistry, ActivationRegistry, B20Token, B20Stablecoin). Vendored from base/base feat/b20stablecoin."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+alloy-evm.workspace = true
+alloy-sol-types.workspace = true
+alloy-primitives.workspace = true
+
+base-precompile-macros = { path = "../precompile-macros" }
+base-precompile-storage = { path = "../precompile-storage" }
+
+revm = { workspace = true, default-features = false, features = ["std"] }
+
+iso_currency = { version = "0.5", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "alloy-evm/std",
+    "alloy-primitives/std",
+    "alloy-sol-types/std",
+    "base-precompile-storage/std",
+    "revm/std",
+]
+test-utils = ["base-precompile-storage/test-utils"]
