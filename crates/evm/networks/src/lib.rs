@@ -112,9 +112,9 @@ impl NetworkConfigs {
         if let Ok(NamedChain::Base | NamedChain::BaseSepolia) = NamedChain::try_from(chain_id) {
             self.base = true;
         }
-        // Base devnet ("vibenet") and zeronet are not yet in alloy_chains, so
-        // match them by raw chain id.
-        if matches!(chain_id, 1337 | 763360) {
+        // Base devnet (1337), zeronet (763360), and vibenet (84_538_453) are
+        // not yet in alloy_chains, so match them by raw chain id.
+        if matches!(chain_id, 1337 | 763360 | 84_538_453) {
             self.base = true;
         }
         self

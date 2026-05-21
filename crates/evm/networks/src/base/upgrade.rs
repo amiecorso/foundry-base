@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 /// treats earlier variants as activated whenever a later variant is the
 /// currently-selected hardfork.
 ///
-/// The default is [`BaseUpgrade::LATEST`] (currently [`BaseUpgrade::Azul`]).
+/// The default is [`BaseUpgrade::LATEST`] (currently [`BaseUpgrade::Beryl`]).
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, ValueEnum,
 )]
@@ -42,10 +42,10 @@ pub enum BaseUpgrade {
     Jovian,
     /// Azul: first Base-specific network upgrade; adopts Osaka MODEXP and
     /// P256VERIFY pricing.
-    #[default]
     Azul,
-    /// Beryl: second Base-specific network upgrade; precompile set is
-    /// identical to Azul.
+    /// Beryl: second Base-specific network upgrade; adds app-layer
+    /// precompiles (TokenFactory, PolicyRegistry, ActivationRegistry, B20).
+    #[default]
     Beryl,
 }
 
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn default_matches_latest() {
         assert_eq!(BaseUpgrade::default(), BaseUpgrade::LATEST);
-        assert_eq!(BaseUpgrade::LATEST, BaseUpgrade::Azul);
+        assert_eq!(BaseUpgrade::LATEST, BaseUpgrade::Beryl);
     }
 
     #[test]
