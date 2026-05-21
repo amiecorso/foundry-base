@@ -297,7 +297,7 @@ contract BaseBls12381PairingJovianLimitTest is Test {
     uint256 constant JOVIAN_PAIRING_MAX = 156_672;
     address constant BLS12_381_PAIRING = address(0x0f);
 
-    function testBaseBls12381PairingJovianRejectsOversizedInput() public {
+    function testBaseBls12381PairingJovianRejectsOversizedInput() public view {
         bytes memory oversized = new bytes(JOVIAN_PAIRING_MAX + 1);
         (bool ok, ) = BLS12_381_PAIRING.staticcall(oversized);
         assertFalse(ok, "Jovian BLS12-381 pairing must reject oversized input");
