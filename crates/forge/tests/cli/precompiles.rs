@@ -1,6 +1,6 @@
 //! Contains various tests for `forge test` with precompiles.
 
-use foundry_evm_networks::NetworkConfigs;
+use foundry_evm_networks::{NetworkConfigs, base::upgrade::BaseUpgrade};
 use foundry_test_utils::str;
 
 forgetest_init!(precompile_trace_decoding, |prj, cmd| {
@@ -226,6 +226,95 @@ Logs:
   recipient balance before 0
   recipient balance after 100
 
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Verifies the Base RIP-7212 P256VERIFY precompile is registered at 0x0100 and
+// returns the expected `0x...01` success word for a known-valid signature.
+forgetest_init!(base_p256verify, |prj, cmd| {
+    prj.update_config(|config| {
+        config.networks = NetworkConfigs::with_base();
+    });
+
+    prj.add_test(
+        "BaseP256Verify.t.sol",
+        r#"
+import "forge-std/Test.sol";
+
+contract BaseP256VerifyTest is Test {
+    // Known-valid P256 test vector from
+    // https://github.com/daimo-eth/p256-verifier/tree/master/test-vectors
+    // (also exercised by revm-precompile::secp256r1::test_sig_verify::ok_1).
+    bytes constant VALID_INPUT =
+        hex"4cee90eb86eaa050036147a12d49004b6b9c72bd725d39d4785011fe190f0b4da73bd4903f0ce3b639bbbf6e8e80d16931ff4bcf5993d58468e8fb19086e8cac36dbcd03009df8c59286b162af3bd7fcc0450c9aa81be5d10d312af6c66b1d604aebd3099c618202fcfe16ae7770b0c49ab5eadf74b754204a3bb6060e44eff37618b065f9832de4ca6ca971a7a1adc826d0f7c00181a5fb2ddf79ae00b4e10e";
+
+    function testBaseP256Verify() public view {
+        (bool ok, bytes memory ret) = address(0x100).staticcall(VALID_INPUT);
+        assertTrue(ok, "P256VERIFY staticcall reverted");
+        assertEq(ret.length, 32, "P256VERIFY expected 32-byte output");
+        bytes32 word;
+        assembly {
+            word := mload(add(ret, 32))
+        }
+        assertEq(word, bytes32(uint256(1)), "P256VERIFY expected success word");
+    }
+}
+   "#,
+    );
+
+    cmd.args(["test", "--mt", "testBaseP256Verify", "-vvv"]).assert_success().stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for test/BaseP256Verify.t.sol:BaseP256VerifyTest
+[PASS] testBaseP256Verify() ([GAS])
+Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
+
+Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)
+
+"#]]);
+});
+
+// Verifies the Jovian BLS12-381 pairing input cap is enforced: a staticcall
+// with an oversized input must fail.
+forgetest_init!(base_bls12_381_pairing_jovian_size_limit, |prj, cmd| {
+    prj.update_config(|config| {
+        config.networks = NetworkConfigs::with_base().with_base_hardfork(BaseUpgrade::Jovian);
+    });
+
+    prj.add_test(
+        "BaseBls12381PairingJovianLimit.t.sol",
+        r#"
+import "forge-std/Test.sol";
+
+contract BaseBls12381PairingJovianLimitTest is Test {
+    // JOVIAN_BLS12_381_PAIRING_MAX = 156_672 bytes; one byte over must revert.
+    uint256 constant JOVIAN_PAIRING_MAX = 156_672;
+    address constant BLS12_381_PAIRING = address(0x0f);
+
+    function testBaseBls12381PairingJovianRejectsOversizedInput() public {
+        bytes memory oversized = new bytes(JOVIAN_PAIRING_MAX + 1);
+        (bool ok, ) = BLS12_381_PAIRING.staticcall(oversized);
+        assertFalse(ok, "Jovian BLS12-381 pairing must reject oversized input");
+    }
+}
+   "#,
+    );
+
+    cmd.args(["test", "--mt", "testBaseBls12381PairingJovianRejectsOversizedInput", "-vvv"])
+        .assert_success()
+        .stdout_eq(str![[r#"
+[COMPILING_FILES] with [SOLC_VERSION]
+[SOLC_VERSION] [ELAPSED]
+Compiler run successful!
+
+Ran 1 test for test/BaseBls12381PairingJovianLimit.t.sol:BaseBls12381PairingJovianLimitTest
+[PASS] testBaseBls12381PairingJovianRejectsOversizedInput() ([GAS])
 Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 
 Ran 1 test suite [ELAPSED]: 1 tests passed, 0 failed, 0 skipped (1 total tests)

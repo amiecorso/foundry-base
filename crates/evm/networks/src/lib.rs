@@ -17,19 +17,29 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+pub mod base;
 pub mod celo;
 
 #[derive(Clone, Debug, Default, Parser, Copy, Serialize, Deserialize, PartialEq)]
 pub struct NetworkConfigs {
     /// Enable Optimism network features.
-    #[arg(help_heading = "Networks", long, conflicts_with = "celo")]
+    #[arg(help_heading = "Networks", long, conflicts_with_all = ["celo", "base"])]
     // Skipped from configs (forge) as there is no feature to be added yet.
     #[serde(skip)]
     optimism: bool,
     /// Enable Celo network features.
-    #[arg(help_heading = "Networks", long, conflicts_with = "optimism")]
+    #[arg(help_heading = "Networks", long, conflicts_with_all = ["optimism", "base"])]
     #[serde(default)]
     celo: bool,
+    /// Enable Base network features.
+    #[arg(help_heading = "Networks", long, conflicts_with_all = ["optimism", "celo"])]
+    #[serde(default)]
+    base: bool,
+    /// Base hardfork to use for precompile selection. Defaults to
+    /// [`base::upgrade::BaseUpgrade::LATEST`] when not specified.
+    #[arg(help_heading = "Networks", long, value_enum)]
+    #[serde(default)]
+    base_hardfork: Option<base::upgrade::BaseUpgrade>,
     /// Whether to bypass prevrandao.
     #[arg(skip)]
     #[serde(default)]
@@ -43,6 +53,17 @@ impl NetworkConfigs {
 
     pub fn with_celo() -> Self {
         Self { celo: true, ..Default::default() }
+    }
+
+    pub fn with_base() -> Self {
+        Self { base: true, ..Default::default() }
+    }
+
+    /// Enable Base features and pin the precompile dispatch to `hardfork`.
+    pub fn with_base_hardfork(mut self, hardfork: base::upgrade::BaseUpgrade) -> Self {
+        self.base = true;
+        self.base_hardfork = Some(hardfork);
+        self
     }
 
     pub fn is_optimism(&self) -> bool {
@@ -80,9 +101,21 @@ impl NetworkConfigs {
         self.celo
     }
 
+    pub fn is_base(&self) -> bool {
+        self.base
+    }
+
     pub fn with_chain_id(mut self, chain_id: u64) -> Self {
         if let Ok(NamedChain::Celo | NamedChain::CeloSepolia) = NamedChain::try_from(chain_id) {
             self.celo = true;
+        }
+        if let Ok(NamedChain::Base | NamedChain::BaseSepolia) = NamedChain::try_from(chain_id) {
+            self.base = true;
+        }
+        // Base devnet ("vibenet") and zeronet are not yet in alloy_chains, so
+        // match them by raw chain id.
+        if matches!(chain_id, 1337 | 763360) {
+            self.base = true;
         }
         self
     }
@@ -94,6 +127,12 @@ impl NetworkConfigs {
                 Some(celo::transfer::precompile())
             });
         }
+        if self.base {
+            base::precompiles::register_for_hardfork(
+                precompiles,
+                self.base_hardfork.unwrap_or_default(),
+            );
+        }
     }
 
     /// Returns precompiles label for configured networks, to be used in traces.
@@ -101,6 +140,32 @@ impl NetworkConfigs {
         let mut labels = AddressHashMap::default();
         if self.celo {
             labels.insert(CELO_TRANSFER_ADDRESS, CELO_TRANSFER_LABEL.to_string());
+        }
+        if self.base {
+            labels.insert(
+                base::precompiles::P256VERIFY_ADDRESS,
+                base::precompiles::P256VERIFY_LABEL.to_string(),
+            );
+            labels.insert(
+                base::precompiles::BN254_PAIR_ADDRESS,
+                base::precompiles::BN254_PAIR_LABEL.to_string(),
+            );
+            labels.insert(
+                base::precompiles::BLS12_381_G1_MSM_ADDRESS,
+                base::precompiles::BLS12_381_G1_MSM_LABEL.to_string(),
+            );
+            labels.insert(
+                base::precompiles::BLS12_381_G2_MSM_ADDRESS,
+                base::precompiles::BLS12_381_G2_MSM_LABEL.to_string(),
+            );
+            labels.insert(
+                base::precompiles::BLS12_381_PAIRING_ADDRESS,
+                base::precompiles::BLS12_381_PAIRING_LABEL.to_string(),
+            );
+            labels.insert(
+                base::precompiles::MODEXP_ADDRESS,
+                base::precompiles::MODEXP_LABEL.to_string(),
+            );
         }
         labels
     }
@@ -111,6 +176,32 @@ impl NetworkConfigs {
         if self.celo {
             precompiles
                 .insert(PRECOMPILE_ID_CELO_TRANSFER.name().to_string(), CELO_TRANSFER_ADDRESS);
+        }
+        if self.base {
+            precompiles.insert(
+                base::precompiles::P256VERIFY_LABEL.to_string(),
+                base::precompiles::P256VERIFY_ADDRESS,
+            );
+            precompiles.insert(
+                base::precompiles::BN254_PAIR_LABEL.to_string(),
+                base::precompiles::BN254_PAIR_ADDRESS,
+            );
+            precompiles.insert(
+                base::precompiles::BLS12_381_G1_MSM_LABEL.to_string(),
+                base::precompiles::BLS12_381_G1_MSM_ADDRESS,
+            );
+            precompiles.insert(
+                base::precompiles::BLS12_381_G2_MSM_LABEL.to_string(),
+                base::precompiles::BLS12_381_G2_MSM_ADDRESS,
+            );
+            precompiles.insert(
+                base::precompiles::BLS12_381_PAIRING_LABEL.to_string(),
+                base::precompiles::BLS12_381_PAIRING_ADDRESS,
+            );
+            precompiles.insert(
+                base::precompiles::MODEXP_LABEL.to_string(),
+                base::precompiles::MODEXP_ADDRESS,
+            );
         }
         precompiles
     }
